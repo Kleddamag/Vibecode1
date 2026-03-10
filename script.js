@@ -470,17 +470,30 @@ function drawBoard(timestamp) {
     context.fillStyle = overlay;
     context.fillRect(0, 0, size, size);
 
+    const title = roundResolved
+      ? roundState.winnerLabel
+        ? `${roundState.winnerLabel} Wins`
+        : "Draw Round"
+      : "Ready";
+    const subtitle = roundResolved
+      ? roundState.winnerLabel
+        ? `Score ${scoreboard.p1} - ${scoreboard.p2} • Press Space for the next round`
+        : "Both snakes crashed • Press Space for a rematch"
+      : "Press Space to start";
+
     context.textAlign = "center";
-    context.fillStyle = "#f5f1e8";
+    context.fillStyle = roundResolved
+      ? roundState.winnerId === "p1"
+        ? "#8dfc7f"
+        : roundState.winnerId === "p2"
+          ? "#ffb85c"
+          : "#f5f1e8"
+      : "#f5f1e8";
     context.font = '700 28px "Avenir Next", "Trebuchet MS", sans-serif';
-    context.fillText(roundResolved ? "Round Over" : "Ready", size / 2, size / 2 - 10);
+    context.fillText(title, size / 2, size / 2 - 10);
     context.font = '500 16px "Avenir Next", "Trebuchet MS", sans-serif';
     context.fillStyle = "rgba(245, 241, 232, 0.82)";
-    context.fillText(
-      roundResolved ? "Press Space for the next round" : "Press Space to start",
-      size / 2,
-      size / 2 + 20,
-    );
+    context.fillText(subtitle, size / 2, size / 2 + 20);
   }
 }
 
