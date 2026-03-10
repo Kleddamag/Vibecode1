@@ -5,6 +5,7 @@ const SPEED_UP_PER_FOOD = 3;
 
 const canvas = document.getElementById("game-board");
 const context = canvas.getContext("2d");
+const canvasFrame = document.querySelector(".canvas-frame");
 const startButton = document.getElementById("start-button");
 const resetButton = document.getElementById("reset-button");
 const themeToggleButton = document.getElementById("theme-toggle");
@@ -21,6 +22,13 @@ const THEMES = {
   modern: "modern",
   retro: "retro",
 };
+const RETRO_RENDER_SIZE = 192;
+const retroBuffer = document.createElement("canvas");
+const retroContext = retroBuffer.getContext("2d");
+
+retroBuffer.width = RETRO_RENDER_SIZE;
+retroBuffer.height = RETRO_RENDER_SIZE;
+retroContext.imageSmoothingEnabled = false;
 
 const scoreboard = {
   p1: 0,
@@ -35,6 +43,17 @@ let animationFrameId = 0;
 let previousTimestamp = 0;
 let accumulatedTime = 0;
 let currentTheme = getInitialTheme();
+const glitchState = {
+  active: false,
+  nextAt: 0,
+  activeUntil: 0,
+  bandTop: 0.5,
+  bandHeight: 0.08,
+  horizontalShift: 0,
+  jitterX: 0,
+  jitterY: 0,
+  opacity: 0,
+};
 
 const controlMap = new Map([
   ["KeyW", { snakeId: "p1", direction: { x: 0, y: -1 } }],
@@ -121,6 +140,88 @@ function setTheme(theme) {
 
 function toggleTheme() {
   setTheme(currentTheme === THEMES.retro ? THEMES.modern : THEMES.retro);
+}
+
+function randomBetween(min, max) {
+  return Math.random() * (max - min) + min;
+}
+
+function scheduleNextGlitch(timestamp) {
+  glitchState.nextAt = timestamp + randomBetween(1400, 4200);
+}
+
+function clearRetroSignal() {
+  canvasFrame.dataset.signal = "stable";
+  canvasFrame.style.setProperty("--glitch-y", "50%");
+  canvasFrame.style.setProperty("--glitch-height", "0%");
+  canvasFrame.style.setProperty("--glitch-opacity", "0");
+  canvasFrame.style.setProperty("--glitch-shift", "0px");
+  canvasFrame.style.setProperty("--crt-jitter-x", "0px");
+  canvasFrame.style.setProperty("--crt-jitter-y", "0px");
+  canvasFrame.style.setProperty("--crt-scale", "1");
+  canvasFrame.style.setProperty("--crt-flicker", "0.96");
+}
+
+function updateRetroSignal(timestamp) {
+  if (currentTheme !== THEMES.retro) {
+    const needsReset =
+      glitchState.active || glitchState.nextAt !== 0 || canvasFrame.dataset.signal !== "stable";
+
+    glitchState.active = false;
+    glitchState.nextAt = 0;
+
+    if (needsReset) {
+      clearRetroSignal();
+    }
+
+    return;
+  }
+
+  if (!glitchState.nextAt) {
+    scheduleNextGlitch(timestamp);
+  }
+
+  if (!glitchState.active && timestamp >= glitchState.nextAt) {
+    glitchState.active = true;
+    glitchState.activeUntil = timestamp + randomBetween(80, 210);
+    glitchState.bandTop = randomBetween(0.12, 0.82);
+    glitchState.bandHeight = randomBetween(0.03, 0.14);
+    glitchState.horizontalShift = randomBetween(-28, 28);
+    glitchState.jitterX = randomBetween(-3, 3);
+    glitchState.jitterY = randomBetween(-2, 2);
+    glitchState.opacity = randomBetween(0.34, 0.78);
+  } else if (glitchState.active && timestamp >= glitchState.activeUntil) {
+    glitchState.active = false;
+    scheduleNextGlitch(timestamp);
+  }
+
+  const activeJitter = glitchState.active ? Math.sin(timestamp / 18) * 1.2 : 0;
+  const flicker = 0.92 + Math.sin(timestamp / 130) * 0.025 + (glitchState.active ? 0.06 : 0);
+
+  canvasFrame.dataset.signal = glitchState.active ? "glitch" : "stable";
+  canvasFrame.style.setProperty("--glitch-y", `${(glitchState.bandTop * 100).toFixed(2)}%`);
+  canvasFrame.style.setProperty(
+    "--glitch-height",
+    glitchState.active ? `${(glitchState.bandHeight * 100).toFixed(2)}%` : "0%",
+  );
+  canvasFrame.style.setProperty(
+    "--glitch-opacity",
+    glitchState.active ? glitchState.opacity.toFixed(2) : "0",
+  );
+  canvasFrame.style.setProperty(
+    "--glitch-shift",
+    `${glitchState.active ? glitchState.horizontalShift.toFixed(2) : 0}px`,
+  );
+  canvasFrame.style.setProperty(
+    "--crt-jitter-x",
+    `${glitchState.active ? (glitchState.jitterX + activeJitter).toFixed(2) : 0}px`,
+  );
+  canvasFrame.style.setProperty(
+    "--crt-jitter-y",
+    `${glitchState.active ? glitchState.jitterY.toFixed(2) : 0}px`,
+  );
+  canvasFrame.style.setProperty("--crt-scale", glitchState.active ? "1.012" : "1");
+  canvasFrame.style.setProperty("--crt-flicker", flicker.toFixed(3));
 }
 
 function spawnFood(snakes) {
@@ -396,21 +497,23 @@ function resizeCanvas() {
   context.setTransform(ratio, 0, 0, ratio, 0, 0);
 }
 
-function drawRoundedRect(x, y, width, height, radius) {
+function drawRoundedRect(ctx, x, y, width, height, radius) {
   const clippedRadius = Math.min(radius, width / 2, height / 2);
-  context.beginPath();
-  context.moveTo(x + clippedRadius, y);
-  context.arcTo(x + width, y, x + width, y + height, clippedRadius);
-  context.arcTo(x + width, y + height, x, y + height, clippedRadius);
-  context.arcTo(x, y + height, x, y, clippedRadius);
-  context.arcTo(x, y, x + width, y, clippedRadius);
-  context.closePath();
+  ctx.beginPath();
+  ctx.moveTo(x + clippedRadius, y);
+  ctx.arcTo(x + width, y, x + width, y + height, clippedRadius);
+  ctx.arcTo(x + width, y + height, x, y + height, clippedRadius);
+  ctx.arcTo(x, y + height, x, y, clippedRadius);
+  ctx.arcTo(x, y, x + width, y, clippedRadius);
+  ctx.closePath();
 }
 
 function drawBoard(timestamp) {
-  const size = canvas.width / (window.devicePixelRatio || 1);
-  const cellSize = size / GRID_SIZE;
+  const displaySize = canvas.width / (window.devicePixelRatio || 1);
   const isRetroTheme = currentTheme === THEMES.retro;
+  const ctx = isRetroTheme ? retroContext : context;
+  const size = isRetroTheme ? RETRO_RENDER_SIZE : displaySize;
+  const cellSize = size / GRID_SIZE;
   const snakePalette = isRetroTheme
     ? {
         p1: { fill: "#3ef8ff", glow: "rgba(62, 248, 255, 0.72)", eye: "#11021d" },
@@ -421,34 +524,38 @@ function drawBoard(timestamp) {
         p2: { fill: "#ffb85c", glow: "rgba(255, 184, 92, 0.45)", eye: "#081217" },
       };
 
-  context.clearRect(0, 0, size, size);
-
-  const boardGradient = context.createLinearGradient(0, 0, size, size);
-  boardGradient.addColorStop(0, isRetroTheme ? "#13031f" : "#15252d");
-  boardGradient.addColorStop(1, isRetroTheme ? "#020108" : "#081217");
-  context.fillStyle = boardGradient;
-  context.fillRect(0, 0, size, size);
-
   if (isRetroTheme) {
-    context.strokeStyle = "rgba(74, 250, 255, 0.12)";
-    context.lineWidth = 1.2;
-    context.shadowBlur = 0;
-    context.strokeRect(6, 6, size - 12, size - 12);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
 
-  context.strokeStyle = isRetroTheme ? "rgba(74, 250, 255, 0.11)" : "rgba(255, 255, 255, 0.04)";
-  context.lineWidth = isRetroTheme ? 1.2 : 1;
+  ctx.clearRect(0, 0, size, size);
+
+  const boardGradient = ctx.createLinearGradient(0, 0, size, size);
+  boardGradient.addColorStop(0, isRetroTheme ? "#13031f" : "#15252d");
+  boardGradient.addColorStop(1, isRetroTheme ? "#020108" : "#081217");
+  ctx.fillStyle = boardGradient;
+  ctx.fillRect(0, 0, size, size);
+
+  if (isRetroTheme) {
+    ctx.strokeStyle = "rgba(74, 250, 255, 0.12)";
+    ctx.lineWidth = 1.2;
+    ctx.shadowBlur = 0;
+    ctx.strokeRect(6, 6, size - 12, size - 12);
+  }
+
+  ctx.strokeStyle = isRetroTheme ? "rgba(74, 250, 255, 0.11)" : "rgba(255, 255, 255, 0.04)";
+  ctx.lineWidth = isRetroTheme ? 1.2 : 1;
 
   for (let index = 0; index <= GRID_SIZE; index += 1) {
     const position = Math.round(index * cellSize) + 0.5;
-    context.beginPath();
-    context.moveTo(position, 0);
-    context.lineTo(position, size);
-    context.stroke();
-    context.beginPath();
-    context.moveTo(0, position);
-    context.lineTo(size, position);
-    context.stroke();
+    ctx.beginPath();
+    ctx.moveTo(position, 0);
+    ctx.lineTo(position, size);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, position);
+    ctx.lineTo(size, position);
+    ctx.stroke();
   }
 
   const pulse = 0.72 + Math.sin(timestamp / 180) * 0.12;
@@ -456,7 +563,7 @@ function drawBoard(timestamp) {
   const foodY = roundState.food.y * cellSize;
   const foodRadius = cellSize * 0.36 * pulse;
 
-  const foodGlow = context.createRadialGradient(
+  const foodGlow = ctx.createRadialGradient(
     foodX + cellSize / 2,
     foodY + cellSize / 2,
     cellSize * 0.08,
@@ -466,12 +573,12 @@ function drawBoard(timestamp) {
   );
   foodGlow.addColorStop(0, isRetroTheme ? "rgba(255, 231, 112, 0.98)" : "rgba(255, 111, 97, 0.95)");
   foodGlow.addColorStop(1, isRetroTheme ? "rgba(255, 231, 112, 0)" : "rgba(255, 111, 97, 0)");
-  context.fillStyle = foodGlow;
-  context.fillRect(foodX - cellSize / 2, foodY - cellSize / 2, cellSize * 2, cellSize * 2);
+  ctx.fillStyle = foodGlow;
+  ctx.fillRect(foodX - cellSize / 2, foodY - cellSize / 2, cellSize * 2, cellSize * 2);
 
   if (isRetroTheme) {
-    context.fillStyle = "#ffe770";
-    context.fillRect(
+    ctx.fillStyle = "#ffe770";
+    ctx.fillRect(
       foodX + cellSize * 0.18,
       foodY + cellSize * 0.18,
       cellSize * 0.64,
@@ -493,24 +600,24 @@ function drawBoard(timestamp) {
       const inset = segmentIndex === 0 ? cellSize * (isRetroTheme ? 0.06 : 0.08) : cellSize * (isRetroTheme ? 0.1 : 0.12);
       const sizeOffset = cellSize - inset * 2;
 
-      context.shadowColor = palette.glow;
-      context.shadowBlur = segmentIndex === 0 ? (isRetroTheme ? 22 : 18) : isRetroTheme ? 14 : 10;
-      context.fillStyle = snake.alive ? palette.fill : "rgba(255, 255, 255, 0.18)";
+      ctx.shadowColor = palette.glow;
+      ctx.shadowBlur = segmentIndex === 0 ? (isRetroTheme ? 22 : 18) : isRetroTheme ? 14 : 10;
+      ctx.fillStyle = snake.alive ? palette.fill : "rgba(255, 255, 255, 0.18)";
 
       if (isRetroTheme) {
-        context.fillRect(x + inset, y + inset, sizeOffset, sizeOffset);
+        ctx.fillRect(x + inset, y + inset, sizeOffset, sizeOffset);
       } else {
-        drawRoundedRect(x + inset, y + inset, sizeOffset, sizeOffset, cellSize * 0.24);
-        context.fill();
+        drawRoundedRect(ctx, x + inset, y + inset, sizeOffset, sizeOffset, cellSize * 0.24);
+        ctx.fill();
       }
 
       if (isRetroTheme) {
-        context.strokeStyle = "rgba(255, 255, 255, 0.18)";
-        context.lineWidth = 1;
-        context.strokeRect(x + inset, y + inset, sizeOffset, sizeOffset);
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.18)";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x + inset, y + inset, sizeOffset, sizeOffset);
       }
 
-      context.shadowBlur = 0;
+      ctx.shadowBlur = 0;
 
       if (segmentIndex === 0) {
         const eyeOffset = cellSize * 0.18;
@@ -522,57 +629,57 @@ function drawBoard(timestamp) {
         const eyeShiftX = horizontal ? eyeOffset * directionSign : 0;
         const eyeShiftY = horizontal ? 0 : eyeOffset * directionSign;
 
-        context.fillStyle = palette.eye;
+        ctx.fillStyle = palette.eye;
 
         if (isRetroTheme) {
-          context.fillRect(
+          ctx.fillRect(
             headCenterX + eyeShiftX + (horizontal ? 0 : -eyeOffset * 0.6) - eyeRadius,
             headCenterY + eyeShiftY + (horizontal ? -eyeOffset * 0.6 : 0) - eyeRadius,
             eyeRadius * 2,
             eyeRadius * 2,
           );
-          context.fillRect(
+          ctx.fillRect(
             headCenterX + eyeShiftX + (horizontal ? 0 : eyeOffset * 0.6) - eyeRadius,
             headCenterY + eyeShiftY + (horizontal ? eyeOffset * 0.6 : 0) - eyeRadius,
             eyeRadius * 2,
             eyeRadius * 2,
           );
         } else {
-          context.beginPath();
-          context.arc(
+          ctx.beginPath();
+          ctx.arc(
             headCenterX + eyeShiftX + (horizontal ? 0 : -eyeOffset * 0.6),
             headCenterY + eyeShiftY + (horizontal ? -eyeOffset * 0.6 : 0),
             eyeRadius,
             0,
             Math.PI * 2,
           );
-          context.arc(
+          ctx.arc(
             headCenterX + eyeShiftX + (horizontal ? 0 : eyeOffset * 0.6),
             headCenterY + eyeShiftY + (horizontal ? eyeOffset * 0.6 : 0),
             eyeRadius,
             0,
             Math.PI * 2,
           );
-          context.fill();
+          ctx.fill();
         }
       }
     });
   });
 
   if (isRetroTheme) {
-    context.fillStyle = "rgba(255, 255, 255, 0.06)";
+    ctx.fillStyle = "rgba(255, 255, 255, 0.06)";
 
     for (let y = 0; y < size; y += 4) {
-      context.fillRect(0, y, size, 1);
+      ctx.fillRect(0, y, size, 1);
     }
   }
 
   if (!roundActive) {
-    const overlay = context.createLinearGradient(0, 0, size, size);
+    const overlay = ctx.createLinearGradient(0, 0, size, size);
     overlay.addColorStop(0, isRetroTheme ? "rgba(8, 1, 18, 0.24)" : "rgba(8, 18, 23, 0.2)");
     overlay.addColorStop(1, isRetroTheme ? "rgba(8, 1, 18, 0.7)" : "rgba(8, 18, 23, 0.56)");
-    context.fillStyle = overlay;
-    context.fillRect(0, 0, size, size);
+    ctx.fillStyle = overlay;
+    ctx.fillRect(0, 0, size, size);
 
     const title = roundResolved
       ? roundState.winnerLabel
@@ -585,8 +692,8 @@ function drawBoard(timestamp) {
         : "Both snakes crashed • Press Space for a rematch"
       : "Press Space to start";
 
-    context.textAlign = "center";
-    context.fillStyle = roundResolved
+    ctx.textAlign = "center";
+    ctx.fillStyle = roundResolved
       ? roundState.winnerId === "p1"
         ? isRetroTheme
           ? "#3ef8ff"
@@ -599,19 +706,52 @@ function drawBoard(timestamp) {
       : isRetroTheme
         ? "#ffe770"
         : "#f5f1e8";
-    context.font = isRetroTheme
-      ? '700 30px "Courier New", "Lucida Console", monospace'
+    ctx.font = isRetroTheme
+      ? '700 11px "Courier New", "Lucida Console", monospace'
       : '700 28px "Avenir Next", "Trebuchet MS", sans-serif';
-    context.fillText(title, size / 2, size / 2 - 10);
-    context.font = isRetroTheme
-      ? '700 15px "Courier New", "Lucida Console", monospace'
+    ctx.fillText(title, size / 2, size / 2 - (isRetroTheme ? 8 : 10));
+    ctx.font = isRetroTheme
+      ? '700 5px "Courier New", "Lucida Console", monospace'
       : '500 16px "Avenir Next", "Trebuchet MS", sans-serif';
-    context.fillStyle = isRetroTheme ? "rgba(127, 251, 255, 0.92)" : "rgba(245, 241, 232, 0.82)";
-    context.fillText(subtitle, size / 2, size / 2 + 20);
+    ctx.fillStyle = isRetroTheme ? "rgba(127, 251, 255, 0.92)" : "rgba(245, 241, 232, 0.82)";
+    ctx.fillText(subtitle, size / 2, size / 2 + (isRetroTheme ? 8 : 20));
+  }
+
+  if (isRetroTheme) {
+    const bandTopPx = glitchState.bandTop * displaySize;
+    const bandHeightPx = Math.max(10, glitchState.bandHeight * displaySize);
+    const sourceTop = glitchState.bandTop * size;
+    const sourceHeight = Math.max(4, glitchState.bandHeight * size);
+
+    context.clearRect(0, 0, displaySize, displaySize);
+    context.imageSmoothingEnabled = false;
+    context.drawImage(retroBuffer, 0, 0, size, size, 0, 0, displaySize, displaySize);
+
+    if (glitchState.active) {
+      context.save();
+      context.globalAlpha = 0.65;
+      context.drawImage(
+        retroBuffer,
+        0,
+        sourceTop,
+        size,
+        sourceHeight,
+        glitchState.horizontalShift,
+        bandTopPx,
+        displaySize,
+        bandHeightPx,
+      );
+      context.globalAlpha = 0.18;
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, bandTopPx, displaySize, Math.max(2, bandHeightPx * 0.12));
+      context.restore();
+    }
   }
 }
 
 function animate(timestamp) {
+  updateRetroSignal(timestamp);
+
   if (roundActive) {
     if (!previousTimestamp) {
       previousTimestamp = timestamp;
@@ -664,6 +804,7 @@ window.addEventListener("resize", resizeCanvas);
 
 resizeCanvas();
 setTheme(currentTheme);
+clearRetroSignal();
 updateStatus(roundState.status);
 updateButtons();
 updateScoreboard();
