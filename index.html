@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Snake Duel Arena</title>
+    <meta
+      name="description"
+      content="A local 1v1 Snake game with WASD controls for Player 1 and arrow keys for Player 2."
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="backdrop backdrop-left"></div>
+    <div class="backdrop backdrop-right"></div>
+
+    <main class="layout">
+      <section class="hero">
+        <p class="eyebrow">Local Arcade</p>
+        <h1>Snake Duel Arena</h1>
+        <p class="tagline">
+          One keyboard. Two snakes. Player 1 uses <strong>WASD</strong>, Player
+          2 uses <strong>Arrow Keys</strong>.
+        </p>
+
+        <div class="controls">
+          <button id="start-button" class="button button-primary" type="button">
+            Start Round
+          </button>
+          <button id="reset-button" class="button button-secondary" type="button">
+            Reset Match
+          </button>
+        </div>
+
+        <div class="status-panel">
+          <div>
+            <span class="label">Status</span>
+            <p id="status-text">Round 1 ready. Press Space to start.</p>
+          </div>
+          <div>
+            <span class="label">Quick Keys</span>
+            <p><kbd>Space</kbd> start or advance, <kbd>R</kbd> resets the match.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="board-shell">
+        <div class="scoreboard">
+          <article class="score-card score-card-green">
+            <div class="score-card-header">
+              <p>Player 1</p>
+              <span>WASD</span>
+            </div>
+            <strong id="player-one-score" class="score-value">0</strong>
+            <p id="player-one-length" class="score-meta">Length 3</p>
+          </article>
+
+          <article class="score-card score-card-amber">
+            <div class="score-card-header">
+              <p>Player 2</p>
+              <span>Arrow Keys</span>
+            </div>
+            <strong id="player-two-score" class="score-value">0</strong>
+            <p id="player-two-length" class="score-meta">Length 3</p>
+          </article>
+        </div>
+
+        <div class="canvas-frame">
+          <div class="round-chip">
+            <span>Round</span>
+            <strong id="round-number">1</strong>
+          </div>
+          <canvas
+            id="game-board"
+            width="720"
+            height="720"
+            aria-label="Snake game board"
+          ></canvas>
+        </div>
+      </section>
+    </main>
+
+    <p id="announcer" class="sr-only" aria-live="polite"></p>
+
+    <script src="./script.js"></script>
+  </body>
+</html>
